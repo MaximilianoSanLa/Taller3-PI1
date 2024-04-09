@@ -1,13 +1,19 @@
 from django.shortcuts import render
 from django.http import HttpResponse
-
+import numpy as np
 from .models import Movie
-
+import os
 import matplotlib.pyplot as plt
 import matplotlib
+from openai import OpenAI
 import io
 import urllib, base64
-
+from dotenv import load_dotenv, find_dotenv
+def get_embedding(text, client, model="text-embedding-3-small"):
+   text = text.replace("\n", " ")
+   return client.embeddings.create(input = [text], model=model).data[0].embedding
+def cosine_similarity(a, b):
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 def home(request):
     #return HttpResponse('<h1>Welcome to Home Page</h1>')
     #return render(request, 'home.html')
@@ -18,7 +24,33 @@ def home(request):
     else:
         movies = Movie.objects.all()
     return render(request, 'home.html', {'searchTerm':searchTerm, 'movies':movies})
+def recommendations(request):
+    searchTerm = request.GET.get('searchMovie')
+    _ = load_dotenv('../openAI.env')
+    if searchTerm:
+        client = OpenAI(
+    # This is the default and can be omitted
+        api_key=os.environ.get('openAI_api_key'),
+        )
+        
+        items = Movie.objects.all()
 
+        req = searchTerm
+        emb_req = get_embedding(req, client)
+
+        sim = []
+        for i in range(len(items)):
+            emb = items[i].emb
+            emb = list(np.frombuffer(emb))
+            sim.append(cosine_similarity(emb,emb_req))
+        sim = np.array(sim)
+        print(sim)
+        idx = np.argmax(sim)
+        idx = int(idx)
+        movies = Movie.objects.filter(title__icontains=items[idx].title)
+    else:
+        movies = Movie.objects.all()
+    return render(request, 'recommendation.html', {'searchTerm':searchTerm, 'movies':movies})
 
 def about(request):
     #return HttpResponse('<h1>Welcome to About Page</h1>')
